@@ -13,8 +13,8 @@ server = FastAPI()
 
 get_model()
 
-@server.post("/synthesize")
-async def synthesize(request: Request):
+@server.post("/get_audio")
+async def get_audio(request: Request):
     request_headers.set(dict(request.headers))
     try:
         body = await request.json()
