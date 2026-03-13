@@ -14,8 +14,6 @@ MAX_CHUNK_CHARS = 900
 RU_SPEAKERS = {"aidar", "baya", "kseniya", "xenia", "random"}
 EN_SPEAKERS = {"en_0", "en_1", "en_2", "en_3"}
 
-SUPPORTED_LANGUAGES = {"ru", "en"}
-
 _model = None
 _model_lock = threading.Lock()
 
@@ -38,9 +36,7 @@ def get_model():
 
 
 def get_default_speaker(language: str) -> str:
-    if language == "en":
-        return "en_0"
-    return "aidar"
+    return "en_0" if language == "en" else "aidar"
 
 
 def validate_speaker(speaker: str, language: str):
@@ -50,20 +46,6 @@ def validate_speaker(speaker: str, language: str):
             f"Speaker '{speaker}' is not available for language '{language}'. "
             f"Available: {sorted(allowed)}"
         )
-
-
-def _clean_text(text: str) -> str:
-    # Markdown ссылки [текст](url) → текст
-    text = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', text)
-    # Голые ссылки
-    text = re.sub(r'https?://\S+', '', text)
-    # Код `code` или ```code```
-    text = re.sub(r'`{1,3}[^`]+`{1,3}', '', text)
-    # Транслитерация латиницы → кириллица
-    text = re.sub(r'[a-zA-Z]+', lambda m: translit(m.group(), 'ru'), text)
-    # Лишние переносы
-    text = re.sub(r'\n{3,}', '\n\n', text)
-    return text.strip()
 
 
 def _split_text(text: str) -> list[str]:
@@ -99,16 +81,14 @@ def _synthesize_chunk(model, text: str, speaker: str) -> AudioSegment:
 
 
 def synthesize(text: str, speaker: str, language: str) -> bytes:
-    text = _clean_text(text)
+    text = re.sub(r'[a-zA-Z]+', lambda m: translit(m.group(), 'ru'), text)
 
     logging.getLogger().info(
         f"Synthesizing: language={language}, speaker={speaker}, text_length={len(text)}"
     )
 
     model = get_model()
-    chunks = _split_text(text)
-
-    segments = [_synthesize_chunk(model, chunk, speaker) for chunk in chunks]
+    segments = [_synthesize_chunk(model, chunk, speaker) for chunk in _split_text(text)]
 
     combined = segments[0]
     for seg in segments[1:]:
