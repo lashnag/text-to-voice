@@ -1,13 +1,16 @@
 import io
 import logging
+import re
 import threading
 
 import torch
 import soundfile as sf
+from pydub import AudioSegment
+from transliterate import translit
 
 SAMPLE_RATE = 48000
+MAX_CHUNK_CHARS = 900
 
-# Silero поддерживает эти голоса для русского языка
 RU_SPEAKERS = {"aidar", "baya", "kseniya", "xenia", "random"}
 EN_SPEAKERS = {"en_0", "en_1", "en_2", "en_3"}
 
@@ -15,6 +18,7 @@ SUPPORTED_LANGUAGES = {"ru", "en"}
 
 _model = None
 _model_lock = threading.Lock()
+
 
 def get_model():
     global _model
@@ -26,16 +30,18 @@ def get_model():
                     repo_or_dir="snakers4/silero-models",
                     model="silero_tts",
                     language="ru",
-                    speaker="v4_ru",
+                    speaker="v5_2_ru",
                 )
                 _model = model
                 logging.getLogger().info("Silero TTS model loaded")
     return _model
 
+
 def get_default_speaker(language: str) -> str:
     if language == "en":
         return "en_0"
-    return "xenia"
+    return "aidar"
+
 
 def validate_speaker(speaker: str, language: str):
     allowed = RU_SPEAKERS if language == "ru" else EN_SPEAKERS
@@ -45,16 +51,39 @@ def validate_speaker(speaker: str, language: str):
             f"Available: {sorted(allowed)}"
         )
 
-def synthesize(text: str, speaker: str, language: str) -> bytes:
-    """
-    Синтезирует речь и возвращает аудио в формате OGG/Opus.
-    """
-    model = get_model()
 
-    logging.getLogger().info(
-        f"Synthesizing: language={language}, speaker={speaker}, text_length={len(text)}"
-    )
+def _clean_text(text: str) -> str:
+    # Markdown ссылки [текст](url) → текст
+    text = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', text)
+    # Голые ссылки
+    text = re.sub(r'https?://\S+', '', text)
+    # Код `code` или ```code```
+    text = re.sub(r'`{1,3}[^`]+`{1,3}', '', text)
+    # Транслитерация латиницы → кириллица
+    text = re.sub(r'[a-zA-Z]+', lambda m: translit(m.group(), 'ru'), text)
+    # Лишние переносы
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    return text.strip()
 
+
+def _split_text(text: str) -> list[str]:
+    chunks = []
+    while len(text) > MAX_CHUNK_CHARS:
+        split_pos = max(
+            text.rfind('. ', 0, MAX_CHUNK_CHARS),
+            text.rfind(', ', 0, MAX_CHUNK_CHARS),
+            text.rfind(' ', 0, MAX_CHUNK_CHARS),
+        )
+        if split_pos == -1:
+            split_pos = MAX_CHUNK_CHARS
+        chunks.append(text[:split_pos + 1].strip())
+        text = text[split_pos + 1:].strip()
+    if text:
+        chunks.append(text)
+    return chunks
+
+
+def _synthesize_chunk(model, text: str, speaker: str) -> AudioSegment:
     with torch.no_grad():
         audio_tensor = model.apply_tts(
             text=text,
@@ -63,17 +92,29 @@ def synthesize(text: str, speaker: str, language: str) -> bytes:
             put_accent=True,
             put_yo=True,
         )
-
-    from pydub import AudioSegment
-
     wav_buf = io.BytesIO()
     sf.write(wav_buf, audio_tensor.numpy(), SAMPLE_RATE, format="WAV", subtype="PCM_16")
     wav_buf.seek(0)
+    return AudioSegment.from_wav(wav_buf)
 
-    segment = AudioSegment.from_wav(wav_buf)
+
+def synthesize(text: str, speaker: str, language: str) -> bytes:
+    text = _clean_text(text)
+
+    logging.getLogger().info(
+        f"Synthesizing: language={language}, speaker={speaker}, text_length={len(text)}"
+    )
+
+    model = get_model()
+    chunks = _split_text(text)
+
+    segments = [_synthesize_chunk(model, chunk, speaker) for chunk in chunks]
+
+    combined = segments[0]
+    for seg in segments[1:]:
+        combined += seg
+
     ogg_buf = io.BytesIO()
-
-    segment.export(ogg_buf, format="ogg", codec="libopus", parameters=["-vbr", "on"])
+    combined.export(ogg_buf, format="ogg", codec="libopus", parameters=["-vbr", "on"])
     ogg_buf.seek(0)
-
     return ogg_buf.read()

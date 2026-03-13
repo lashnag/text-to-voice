@@ -10,5 +10,6 @@ soundfile~=0.12.1
 pydub~=0.25.1
 omegaconf~=2.3.0
 numpy<2
+transliterate~=1.10.2
 
 # brew install ffmpeg
