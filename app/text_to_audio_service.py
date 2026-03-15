@@ -84,7 +84,7 @@ def synthesize(text: str, speaker: str, language: str) -> bytes:
     text = re.sub(r'[a-zA-Z]+', lambda m: translit(m.group(), 'ru'), text)
 
     logging.getLogger().info(
-        f"Synthesizing: language={language}, speaker={speaker}, text_length={len(text)}"
+        f"Synthesizing: language={language}, speaker={speaker}, text_length={len(text)}, text={text}"
     )
 
     model = get_model()
