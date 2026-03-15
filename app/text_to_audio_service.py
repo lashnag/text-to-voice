@@ -2,6 +2,7 @@ import io
 import logging
 import re
 import threading
+from num2words import num2words
 
 import torch
 import soundfile as sf
@@ -64,6 +65,9 @@ def _split_text(text: str) -> list[str]:
         chunks.append(text)
     return chunks
 
+def _numbers_to_words(text: str) -> str:
+    return re.sub(r'\d+', lambda m: num2words(int(m.group()), lang='ru'), text)
+
 
 def _synthesize_chunk(model, text: str, speaker: str) -> AudioSegment:
     with torch.no_grad():
@@ -81,6 +85,7 @@ def _synthesize_chunk(model, text: str, speaker: str) -> AudioSegment:
 
 
 def synthesize(text: str, speaker: str, language: str) -> bytes:
+    text = _numbers_to_words(text)
     text = re.sub(r'[a-zA-Z]+', lambda m: translit(m.group(), 'ru'), text)
 
     logging.getLogger().info(
