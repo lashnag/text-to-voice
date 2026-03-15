@@ -15,9 +15,21 @@ MAX_CHUNK_CHARS = 900
 RU_SPEAKERS = {"aidar", "baya", "kseniya", "xenia", "random"}
 EN_SPEAKERS = {"en_0", "en_1", "en_2", "en_3"}
 
+LATIN_TO_RU = {
+    'A': 'А', 'B': 'Б', 'C': 'С', 'D': 'Д', 'E': 'Е', 'F': 'Ф',
+    'G': 'Г', 'H': 'Х', 'I': 'И', 'J': 'Й', 'K': 'К', 'L': 'Л',
+    'M': 'М', 'N': 'Н', 'O': 'О', 'P': 'П', 'Q': 'КУ', 'R': 'Р',
+    'S': 'С', 'T': 'Т', 'U': 'У', 'V': 'В', 'W': 'В', 'X': 'ИКС',
+    'Y': 'У', 'Z': 'З',
+    'a': 'а', 'b': 'б', 'c': 'с', 'd': 'д', 'e': 'е', 'f': 'ф',
+    'g': 'г', 'h': 'х', 'i': 'и', 'j': 'й', 'k': 'к', 'l': 'л',
+    'm': 'м', 'n': 'н', 'o': 'о', 'p': 'п', 'q': 'ку', 'r': 'р',
+    's': 'с', 't': 'т', 'u': 'у', 'v': 'в', 'w': 'в', 'x': 'кс',
+    'y': 'у', 'z': 'з',
+}
+
 _model = None
 _model_lock = threading.Lock()
-
 
 def get_model():
     global _model
@@ -83,10 +95,13 @@ def _synthesize_chunk(model, text: str, speaker: str) -> AudioSegment:
     wav_buf.seek(0)
     return AudioSegment.from_wav(wav_buf)
 
+def _replace_latin(text: str) -> str:
+    return ''.join(LATIN_TO_RU.get(ch, ch) for ch in text)
 
 def synthesize(text: str, speaker: str, language: str) -> bytes:
     text = _numbers_to_words(text)
     text = re.sub(r'[a-zA-Z]+', lambda m: translit(m.group(), 'ru'), text)
+    text = _replace_latin(text)
 
     logging.getLogger().info(
         f"Synthesizing: language={language}, speaker={speaker}, text_length={len(text)}, text={text}"
