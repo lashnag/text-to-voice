@@ -13,7 +13,7 @@ server = FastAPI()
 
 get_model()
 
-@server.post("/get-audio")
+@server.post("/generate")
 async def get_audio(request: Request):
     request_headers.set(dict(request.headers))
     try:
